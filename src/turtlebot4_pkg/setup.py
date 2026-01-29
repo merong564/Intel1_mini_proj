@@ -26,6 +26,7 @@ setup(
         'console_scripts': [
             'yolo = turtlebot4_pkg.2_4_g_yolov8_obj_det:main',
             'depth = turtlebot4_pkg.depth_checker:main',
+            'move = turtlebot4_pkg.3_2_a_nav_to_pose:main',
         ],
     },
 )
