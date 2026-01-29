@@ -35,7 +35,7 @@ class YoloCarNavGoal(Node):
         self.close_distance_hit_count = 0  # To avoid reacting to a single bad reading
 
         # Load YOLOv8 model
-        self.model = YOLO("/home/rokey/best.pt")
+        self.model = YOLO("yolov11n_amr.pt")
 
         # ROS 2 TF and Nav2 setup
         self.tf_buffer = tf2_ros.Buffer()

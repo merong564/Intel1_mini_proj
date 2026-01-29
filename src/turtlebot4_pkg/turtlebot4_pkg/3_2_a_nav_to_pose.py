@@ -50,7 +50,7 @@ def main():
 
     # Go to each goal pose
     navigator.startToPose(goal_pose)
-rc
+
     rclpy.shutdown()
 
 

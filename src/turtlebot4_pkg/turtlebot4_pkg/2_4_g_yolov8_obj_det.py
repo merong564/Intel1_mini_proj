@@ -11,7 +11,7 @@ from cv_bridge import CvBridge
 from ultralytics import YOLO
 from pathlib import Path
 import cv2
-from geometry_msgs.msg import Point # 중심점 전달용
+from geometry_msgs.msg import Point
 
 
 class YOLOImageSubscriber(Node):
@@ -26,7 +26,7 @@ class YOLOImageSubscriber(Node):
         self.subscription = self.create_subscription(
             Image,
             # '/robot1/oakd/rgb/preview/image_raw',
-            '/robot1/oakd/rgb/image_raw',  ########### preview 삭제
+            '/robot1/oakd/rgb/image_raw',
             self.listener_callback,
             10)
         
@@ -53,7 +53,6 @@ class YOLOImageSubscriber(Node):
                 continue
 
             results = self.model.predict(img, stream=True,imgsz=704)
-            ####
             target_box = None
 
             for r in results:
@@ -61,7 +60,6 @@ class YOLOImageSubscriber(Node):
                     continue
                 for box in r.boxes:
                     x1, y1, x2, y2 = map(int, box.xyxy[0])
-                    ####3
                     target_box = (x1, y1, x2, y2)
                     orig_cx = (x1 + x2) / 2
                     orig_cy = (y1 + y2) / 2
@@ -73,35 +71,28 @@ class YOLOImageSubscriber(Node):
                     cv2.rectangle(img, (x1, y1), (x2, y2), (0, 0, 255), 2)
                     cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
-            ####
             h, w = img.shape[:2]
             img_to_show = cv2.resize(img, (704, 704))
 
             if target_box is not None:
                 x1, y1, x2, y2 = target_box
-                # orig_cx = (x1 + x2) / 2
-                # orig_cy = (y1 + y2) / 2
                 new_cx = int(orig_cx * (704 / w))
                 new_cy = int(orig_cy * (704 / h))
                 p = Point()
                 p.x = float(orig_cx)
                 p.y = float(orig_cy)
+                self.get_logger().info(f'######## Detected ponint ######## {p.x}, {p.y}')
                 self.point_publisher.publish(p)
                 
                 # 3. 리사이즈된 이미지(704) 위에 점 찍기
                 cv2.circle(img_to_show, (new_cx, new_cy), 5, (0, 255, 0), -1)
-
-            # origin code
-            # center point
-        #     p = Point()
-        #     p.x = float((x1+x2)/2)
-        #     p.y = float((y1+y2)/2)
-        #     self.point_publisher.publish(p)
-        
-        # # center point show
-        #     cv2.circle(img, (int(p.x), int(p.y)), 5, (0, 255, 0), -1)
-
-
+            # else:
+            #     # 인지값이 없을 경우, 모든 좌표를 -1로 출력
+            #     self.get_logger().info(f'########## No Detect ##########')
+            #     p = Point()
+            #     p.x = float(-1)
+            #     p.y = float(-1)
+            #     self.point_publisher.publish(p)
 
             cv2.imshow("YOLOv8 Detection", img_to_show)
             if cv2.waitKey(1) & 0xFF == ord('q'):
@@ -110,20 +101,22 @@ class YOLOImageSubscriber(Node):
                 break
 
 def main():
-    model_path = input("Enter path to model file (.pt): ").strip()
+    # model_path = input("Enter path to model file (.pt): ").strip()
 
-    if not os.path.exists(model_path):
-        print(f"File not found: {model_path}")
-        sys.exit(1)
+    # if not os.path.exists(model_path):
+    #     print(f"File not found: {model_path}")
+    #     sys.exit(1)
 
-    suffix = Path(model_path).suffix.lower()
-    if suffix == '.pt':
-        model = YOLO(model_path)
-    elif suffix in ['.onnx', '.engine']:
-        model = YOLO(model_path, task='detect')
-    else:
-        print(f"Unsupported model format: {suffix}")
-        sys.exit(1)
+    # suffix = Path(model_path).suffix.lower()
+    # if suffix == '.pt':
+    #     model = YOLO(model_path)
+    # elif suffix in ['.onnx', '.engine']:
+    #     model = YOLO(model_path, task='detect')
+    # else:
+    #     print(f"Unsupported model format: {suffix}")
+    #     sys.exit(1)
+    model_path = '/home/rokey/Desktop/Intel1_mini_proj/src/turtlebot4_pkg/turtlebot4_pkg/yolov11n_amr.pt'
+    model = YOLO(model_path, task='detect')
 
     rclpy.init()
     node = YOLOImageSubscriber(model)
