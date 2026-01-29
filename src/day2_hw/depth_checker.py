@@ -5,6 +5,7 @@ import numpy as np
 import cv2
 from cv_bridge import CvBridge
 from geometry_msgs.msg import Point # 중심점 전달용
+from detect_msg import Rcinfo
 
 
 # ================================
@@ -39,6 +40,8 @@ class DepthChecker(Node):
 
         # YOLO로부터 좌표 구독 (추가된 부분)
         self.point_sub = self.create_subscription(Point, '/center_point', self.point_callback, 10)
+
+        self.publisher = self.create_publisher(Rcinfo, 'detected_msg', 10)
 
     def point_callback(self, msg):
         # YOLO 노드에서 받은 좌표 업데이트
