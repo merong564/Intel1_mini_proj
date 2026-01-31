@@ -5,7 +5,7 @@ from rclpy.duration import Duration
 
 from sensor_msgs.msg import Image as ROSImage, CameraInfo, CompressedImage
 from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_point
-from geometry_msgs.msg import PointStamped, PoseStamped, Quaternion
+from geometry_msgs.msg import PointStamped, PoseStamped, Quaternion,Point
 from tf2_ros import Buffer, TransformListener
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy  # <--- [추가 1] QoS 관련 임포트
 
@@ -20,15 +20,20 @@ import math
 from rclpy.time import Time
 
 from message_filters import Subscriber, ApproximateTimeSynchronizer
+import time
+from queue import Queue
+from ultralytics import YOLO
 
 
 class DepthToMap(Node):
-    def __init__(self):
+    def __init__(self,model):
         super().__init__('depth_to_map_node')
-
+        self.model = model
         self.bridge = CvBridge()
         self.K = None  # Camera intrinsics
         self.lock = threading.Lock()
+        self.processed_rgb = None  # 가공된 이미지를 저장할 변수 추가
+        self.is_navigating = False  # goal을 보냈는지 확인하는 플래그
 
         #### QoS Add
         sensor_qos_profile = QoSProfile(
@@ -49,6 +54,9 @@ class DepthToMap(Node):
         self.depth_image = None
         self.rgb_image = None
         self.clicked_point = None
+        self.classNames = model.names if hasattr(model, 'names') else ['Object']
+
+
 
         # TF2 buffer for transforms (camera_frame -> base_link -> map)
         self.tf_buffer = Buffer()
@@ -72,6 +80,10 @@ class DepthToMap(Node):
         # Publishers for the processed images (for rqt_image_view)
         self.rgb_pub = self.create_publisher(ROSImage, f'{ns}/rgb_processed', 1)
         self.depth_pub = self.create_publisher(ROSImage, f'{ns}/depth_colored', 1)
+        self.point_publisher = self.create_publisher(
+            Point, '/center_point', 10
+        )
+
 
         # Subscribe to camera intrinsics (needed once)
         self.create_subscription(CameraInfo, self.info_topic, self.camera_info_callback, 1)
@@ -158,7 +170,9 @@ class DepthToMap(Node):
         while not self.gui_thread_stop.is_set():
             img = None
             with self.lock:
-                if self.rgb_image is not None:
+                if self.processed_rgb is not None:
+                    img = self.processed_rgb.copy()
+                elif self.rgb_image is not None:
                     img = self.rgb_image.copy()
             if img is not None:
                 cv2.imshow('Click to select pixel', img)
@@ -171,6 +185,8 @@ class DepthToMap(Node):
         """ Process RGB & Depth, overlay info, transform clicked point, and publish """
         # debugging add
         known_frames = self.tf_buffer.all_frames_as_yaml()
+        center_x=-1
+        center_y=-1
 
         if 'map' not in known_frames:
              self.get_logger().error("ALERT: TF Buffer does NOT contain 'map'! (Listening to wrong topic?)")
@@ -194,9 +210,75 @@ class DepthToMap(Node):
                 depth_normalized = cv2.normalize(depth_display, None, 0, 255, cv2.NORM_MINMAX)
                 depth_colored = cv2.applyColorMap(depth_normalized.astype(np.uint8), cv2.COLORMAP_JET)
 
-                if click:
+                results = self.model.predict(
+                    ##########33
+                    rgb, 
+                    stream=True, 
+                    imgsz=416,      # 704 → 416으로 변경 (추론만 작은 크기로)
+                    conf=0.5,       # confidence 임계값 추가
+                    verbose=False   # 로그 끄기
+                )
+
+                target_box = None
+
+                for r in results:
+                    if not hasattr(r, 'boxes') or r.boxes is None:
+                        continue
+                    for box in r.boxes:
+                        cls = int(box.cls[0]) if box.cls is not None else 0
+                        if cls != 1: 
+                            continue
+                        conf = float(box.conf[0]) if box.conf is not None else 0.0
+
+                        x1, y1, x2, y2 = map(int, box.xyxy[0])
+                        target_box = (x1, y1, x2, y2)
+                        orig_cx = (x1 + x2) / 2
+                        orig_cy = (y1 + y2) / 2
+
+                        label = f"{self.classNames[cls]} {conf:.2f}"
+                        ##########
+                        cv2.rectangle(rgb, (x1, y1), (x2, y2), (0, 0, 255), 2)
+                        cv2.putText(rgb, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+
+
+                h, w = self.rgb_image.shape[:2]
+                img_to_show = cv2.resize(self.rgb_image, (704, 704))
+
+                if target_box is not None:
+                    x1, y1, x2, y2 = target_box
+                    center_x = int(orig_cx * (704 / w))
+                    center_y = int(orig_cy * (704 / h))
+                    p = Point()
+                    p.x = float(orig_cx)
+                    p.y = float(orig_cy)
+                    self.get_logger().info(f'######## Detected ponint ######## {p.x}, {p.y}')
+                    self.point_publisher.publish(p)
+                    
+                    # 3. 리사이즈된 이미지(704) 위에 점 찍기
+                    cv2.circle(img_to_show, (center_x, center_y), 5, (0, 255, 0), -1)
+                else:
+                    # 인지값이 없을 경우, 모든 좌표를 -1로 출력
+                    self.get_logger().info(f'########## No Detect ##########')
+                    # p = Point()
+                    # p.x = float(-1)
+                    # p.y = float(-1)
+                    # self.point_publisher.publish(p)
+                ########
+                with self.lock:
+                    # GUI 스레드에서 보여줄 이미지를 img_to_show(리사이즈+점)로 업데이트
+                    self.processed_rgb = img_to_show.copy()
+
+                if center_y != -1 and center_x != -1:
                     # Calculate depth and transform to map frame for clicked pixel
-                    x, y = click
+                    #x, y = click
+
+                    # 이미 goal로 이동 중이라면 다시 gotoPose 명령을 보내지 않음
+                    if self.is_navigating:
+                        self.get_logger().info('Robot is already moving to the car...', once=True)
+                        return
+                    
+                    x, y = center_x, center_y
                     if x < rgb_display.shape[1] and y < rgb_display.shape[0] \
                             and y < depth_display.shape[0] and x < depth_display.shape[1]:
 
@@ -251,7 +333,10 @@ class DepthToMap(Node):
 
                                 # # 클릭 좌표 초기화
                                 # with self.lock:
-                                self.clicked_point = None
+                                # self.clicked_point = None
+                                self.is_navigating = True
+                                center_x = -1
+                                center_y = -1
 
                             except Exception as e:
                                 self.get_logger().warn(f"TF transform failed: {e}")
@@ -283,8 +368,11 @@ class DepthToMap(Node):
 
 
 def main():
+    model_path = '/home/rokey/Desktop/Intel1_mini_proj/src/turtlebot4_pkg/turtlebot4_pkg/yolov11n_amr.pt'
+    model = YOLO(model_path, task='detect')
+
     rclpy.init()
-    node = DepthToMap()
+    node = DepthToMap(model)
     executor = MultiThreadedExecutor()
     executor.add_node(node)
 
