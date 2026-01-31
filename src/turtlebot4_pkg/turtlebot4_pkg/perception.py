@@ -249,6 +249,10 @@ class DepthToMap(Node):
                                 self.navigator.goToPose(goal_pose)
                                 self.get_logger().info("Sent navigation goal to map coordinate.")
 
+                                # # 클릭 좌표 초기화
+                                # with self.lock:
+                                self.clicked_point = None
+
                             except Exception as e:
                                 self.get_logger().warn(f"TF transform failed: {e}")
 
