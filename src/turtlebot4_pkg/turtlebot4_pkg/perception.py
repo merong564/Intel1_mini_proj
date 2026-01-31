@@ -5,7 +5,7 @@ from rclpy.duration import Duration
 
 from sensor_msgs.msg import Image as ROSImage, CameraInfo, CompressedImage
 from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_point
-from geometry_msgs.msg import PointStamped
+from geometry_msgs.msg import PointStamped, PoseStamped, Quaternion
 from tf2_ros import Buffer, TransformListener
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy  # <--- [추가 1] QoS 관련 임포트
 
@@ -15,6 +15,7 @@ from turtlebot4_navigation.turtlebot4_navigator import TurtleBot4Navigator, Turt
 import numpy as np
 import cv2
 import threading
+import math
 
 from rclpy.time import Time
 
@@ -55,14 +56,14 @@ class DepthToMap(Node):
 
         # Dock, set initial pose, undock
         self.navigator = TurtleBot4Navigator()
-        # if not self.navigator.getDockedStatus():
-        #     self.get_logger().info('Docking before initializing pose')
-        #     self.navigator.dock()
+        if not self.navigator.getDockedStatus():
+            self.get_logger().info('Docking before initializing pose')
+            self.navigator.dock()
 
-        # initial_pose = self.navigator.getPoseStamped([0.0, 0.0], TurtleBot4Directions.NORTH)
-        # self.navigator.setInitialPose(initial_pose)
-        # self.navigator.waitUntilNav2Active()
-        # self.navigator.undock()
+        initial_pose = self.navigator.getPoseStamped([0.0, 0.0], TurtleBot4Directions.NORTH)
+        self.navigator.setInitialPose(initial_pose)
+        self.navigator.waitUntilNav2Active()
+        self.navigator.undock()
 
         self.logged_intrinsics = False
         self.logged_rgb_shape = False
@@ -232,6 +233,22 @@ class DepthToMap(Node):
                                 self.get_logger().info(
                                     f"Map coordinate: ({pt_map.point.x:.2f}, {pt_map.point.y:.2f}, {pt_map.point.z:.2f})"
                                 )
+
+                                ## move robot: go to pt_map
+                                goal_pose = PoseStamped()
+                                goal_pose.header.frame_id = 'map'
+                                goal_pose.header.stamp = self.get_clock().now().to_msg()
+                                goal_pose.pose.position.x = pt_map.point.x
+                                goal_pose.pose.position.y = pt_map.point.y
+                                goal_pose.pose.position.z = 0.0
+                                yaw = 0.0
+                                qz = math.sin(yaw / 2.0)
+                                qw = math.cos(yaw / 2.0)
+                                goal_pose.pose.orientation = Quaternion(x=0.0, y=0.0, z=qz, w=qw)
+
+                                self.navigator.goToPose(goal_pose)
+                                self.get_logger().info("Sent navigation goal to map coordinate.")
+
                             except Exception as e:
                                 self.get_logger().warn(f"TF transform failed: {e}")
 
