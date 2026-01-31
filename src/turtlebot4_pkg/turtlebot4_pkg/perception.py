@@ -11,6 +11,7 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy  # <--- [추�
 
 from cv_bridge import CvBridge
 from turtlebot4_navigation.turtlebot4_navigator import TurtleBot4Navigator, TurtleBot4Directions
+from std_msgs.msg import Bool
 
 import numpy as np
 import cv2
@@ -34,9 +35,10 @@ class DepthToMap(Node):
         self.lock = threading.Lock()
         self.processed_rgb = None  # 가공된 이미지를 저장할 변수 추가
         self.is_navigating = False  # goal을 보냈는지 확인하는 플래그
+        self.arrived = False # 로봇이 default goal에 도착했는지 확인하는 플래그
 
         #### QoS Add
-        sensor_qos_profile = QoSProfile(
+        self.sensor_qos_profile = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
             history=HistoryPolicy.KEEP_LAST,
             depth=1
@@ -78,30 +80,17 @@ class DepthToMap(Node):
         self.logged_depth_shape = False
 
         # Publishers for the processed images (for rqt_image_view)
-        self.rgb_pub = self.create_publisher(ROSImage, f'{ns}/rgb_processed', 1)
-        self.depth_pub = self.create_publisher(ROSImage, f'{ns}/depth_colored', 1)
-        self.point_publisher = self.create_publisher(
-            Point, '/center_point', 10
-        )
+        self.rgb_sub = None
+        self.depth_sub = None
+        self.ts = None
 
 
         # Subscribe to camera intrinsics (needed once)
         self.create_subscription(CameraInfo, self.info_topic, self.camera_info_callback, 1)
 
-        # Time-synchronized subscribers for RGB + Depth images
-        # self.rgb_sub = Subscriber(self, CompressedImage, self.rgb_topic)
-        # self.depth_sub = Subscriber(self, ROSImage, self.depth_topic)
-        ######## QoS Add
-        self.rgb_sub = Subscriber(self, CompressedImage, self.rgb_topic, qos_profile=sensor_qos_profile)
-        self.depth_sub = Subscriber(self, ROSImage, self.depth_topic, qos_profile=sensor_qos_profile)
+        # Subscribe whether robot is arrived at default goal
+        self.create_subscription(Bool, '/arrived_default_goal', self.arrived_info_callback, 1)
 
-        # ApproximateTimeSynchronizer: allows slight timestamp mismatch
-        self.ts = ApproximateTimeSynchronizer(
-            [self.rgb_sub, self.depth_sub],
-            queue_size=10,
-            slop=3  # default: 0.1
-        )
-        self.ts.registerCallback(self.synced_callback)
 
         # Thread for mouse click input
         self.gui_thread_stop = threading.Event()
@@ -128,6 +117,28 @@ class DepthToMap(Node):
                     f"cx={self.K[0,2]:.2f}, cy={self.K[1,2]:.2f}"
                 )
                 self.logged_intrinsics = True
+    
+    def arrived_info_callback(self, arrived_msg):
+        if arrived_msg.data and self.rgb_sub is None:
+            self.get_logger().info('Robot arrived at default goal')
+            self.arrived = True
+
+            # Time-synchronized subscribers for RGB + Depth images
+            ######## QoS Add for deducing camera delay
+            self.rgb_sub = Subscriber(self, CompressedImage, self.rgb_topic, qos_profile=self.sensor_qos_profile)
+            self.depth_sub = Subscriber(self, ROSImage, self.depth_topic, qos_profile=self.sensor_qos_profile)
+
+            # ApproximateTimeSynchronizer: allows slight timestamp mismatch
+            self.ts = ApproximateTimeSynchronizer(
+                [self.rgb_sub, self.depth_sub],
+                queue_size=10,
+                slop=3  # default: 0.1
+            )
+            self.ts.registerCallback(self.synced_callback)
+            self.get_logger().info('Perception started successfully!')
+        elif not arrived_msg.data:
+            self.get_logger().info('Wait for arriving...')
+            
 
     def synced_callback(self, rgb_msg, depth_msg):
         """ Called when RGB and Depth frames arrive together (synchronized) """
@@ -249,11 +260,6 @@ class DepthToMap(Node):
                     x1, y1, x2, y2 = target_box
                     center_x = int(orig_cx * (704 / w))
                     center_y = int(orig_cy * (704 / h))
-                    p = Point()
-                    p.x = float(orig_cx)
-                    p.y = float(orig_cy)
-                    self.get_logger().info(f'######## Detected ponint ######## {p.x}, {p.y}')
-                    self.point_publisher.publish(p)
                     
                     # 3. 리사이즈된 이미지(704) 위에 점 찍기
                     cv2.circle(img_to_show, (center_x, center_y), 5, (0, 255, 0), -1)
