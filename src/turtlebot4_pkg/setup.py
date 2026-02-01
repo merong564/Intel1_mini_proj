@@ -30,6 +30,7 @@ setup(
             'move_origin = turtlebot4_pkg.nav_to_pose_origin:main',
             'perception = turtlebot4_pkg.perception:main',
             'test_arr = turtlebot4_pkg.test_arrived_publisher:main',
+            'test_arr_pub = turtlebot4_pkg.nav_to_pose_test:main',
         ],
     },
 )

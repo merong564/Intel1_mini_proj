@@ -68,15 +68,15 @@ class DepthToMap(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
         # Dock, set initial pose, undock
-        self.navigator = TurtleBot4Navigator()
-        if not self.navigator.getDockedStatus():
-            self.get_logger().info('Docking before initializing pose')
-            self.navigator.dock()
+        # self.navigator = TurtleBot4Navigator()
+        # if not self.navigator.getDockedStatus():
+        #     self.get_logger().info('Docking before initializing pose')
+        #     self.navigator.dock()
 
-        initial_pose = self.navigator.getPoseStamped([0.0, 0.0], TurtleBot4Directions.NORTH)
-        self.navigator.setInitialPose(initial_pose)
-        self.navigator.waitUntilNav2Active()
-        self.navigator.undock()
+        # initial_pose = self.navigator.getPoseStamped([0.0, 0.0], TurtleBot4Directions.NORTH)
+        # self.navigator.setInitialPose(initial_pose)
+        # self.navigator.waitUntilNav2Active()
+        # self.navigator.undock()
 
         self.logged_intrinsics = False
         self.logged_rgb_shape = False
@@ -88,7 +88,7 @@ class DepthToMap(Node):
         self.ts = None
 
         # RC car 정보 퍼블리시
-        self.publisher = self.create_publisher(Rcinfo, 'detected_msg', 10)
+        self.publisher = self.create_publisher(Rcinfo, '/detected_msg', 10)
         self.timer = self.create_timer(1.0, self.detect_publish)
 
 
@@ -352,9 +352,12 @@ class DepthToMap(Node):
                                 goal_pose.pose.position.x = pt_map.point.x
                                 goal_pose.pose.position.y = pt_map.point.y
                                 goal_pose.pose.position.z = 0.0
-                                yaw = 0.0
-                                qz = math.sin(yaw / 2.0)
-                                qw = math.cos(yaw / 2.0)
+                                # yaw = 0.0
+                                # qz = math.sin(yaw / 2.0)
+                                # qw = math.cos(yaw / 2.0)
+                                # car view orientation
+                                qz = -0.775
+                                qw =  0.632
                                 goal_pose.pose.orientation = Quaternion(x=0.0, y=0.0, z=qz, w=qw)
 
                                 self.goal = goal_pose
