@@ -15,22 +15,16 @@ class Move(Node):
         self.detected = False
         self.goal = None
         self.final_goal_pose = None
-        # self.distance = 0.0
-        # self.should_exit = False
-        # self.navigation_initialized = False
-        # self.previous_detected = None  # 이전 상태 추적
         ns = self.get_namespace()
         self.arrive_pub = self.create_publisher(Bool, f'{ns}/arrived_default_goal',10)
 
         self.arrived_success = False
         self.moving_to_default = False
-        self.webcam_detected = True        ####### 추후 False 변경 필요
+        self.webcam_detected = False
 
         
         # 초기 목표 위치 설정
         self.default_goal = [-1.998, 0.818]
-        self.is_moving = False #is it move?
-        self.is_spinning = False # 회전 중인지 확인
 
         self.yolo_sub = self.create_subscription(
             String,

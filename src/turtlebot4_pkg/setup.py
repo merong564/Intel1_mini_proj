@@ -31,6 +31,7 @@ setup(
             'perception = turtlebot4_pkg.perception:main',
             'test_arr = turtlebot4_pkg.test_arrived_publisher:main',
             'test_arr_pub = turtlebot4_pkg.nav_to_pose_test:main',
+            'webcam_pub = webcam_det.2_4_e_yolo_publisher_wc:main',
         ],
     },
 )
