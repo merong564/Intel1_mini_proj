@@ -1,3 +1,3 @@
 float32 dist
-geometry_msgs/PointStamped map
+geometry_msgs/PoseStamped goal
 bool detected
