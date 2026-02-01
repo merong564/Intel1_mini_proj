@@ -88,7 +88,7 @@ class DepthToMap(Node):
         self.ts = None
 
         # RC car 정보 퍼블리시
-        self.publisher = self.create_publisher(Rcinfo, '/detected_msg', 10)
+        self.publisher = self.create_publisher(Rcinfo, f'{ns}/detected_msg', 10)
         self.timer = self.create_timer(1.0, self.detect_publish)
 
 
@@ -96,7 +96,7 @@ class DepthToMap(Node):
         self.create_subscription(CameraInfo, self.info_topic, self.camera_info_callback, 1)
 
         # Subscribe whether robot is arrived at default goal
-        self.create_subscription(Bool, '/arrived_default_goal', self.arrived_info_callback, 1)
+        self.create_subscription(Bool, f'{ns}/arrived_default_goal', self.arrived_info_callback, 1)
 
 
         # Thread for mouse click input

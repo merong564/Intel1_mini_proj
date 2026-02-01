@@ -33,13 +33,13 @@ class Move(Node):
 
         self.yolo_sub = self.create_subscription(
             String,
-            'yolo_result',
+            f'{ns}/yolo_result',
             self.web_sub_callback,
             10)
 
         self.subscription = self.create_subscription(
             Rcinfo,
-            'detected_msg',
+            f'{ns}/detected_msg',
             self.detect_sub_callback,
             10)
         
@@ -99,7 +99,7 @@ class Move(Node):
                     self.arrived_success = True 
                     
                     # 도착 직후 1회만 스핀 동작 수행
-                    self.navigator.spin(spin_dist=6.28)
+                    # self.navigator.spin(spin_dist=6.28)
                     
                 else:
                     # 실패하거나 취소된 경우 (재시도 로직이 필요하면 여기에 추가)
