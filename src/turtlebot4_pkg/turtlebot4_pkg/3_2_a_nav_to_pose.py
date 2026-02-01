@@ -1,4 +1,5 @@
 import rclpy
+import math
 from rclpy.node import Node
 from detect_msg.msg import Rcinfo
 from std_msgs.msg import Bool,String
@@ -47,6 +48,38 @@ class Move(Node):
         self.timer = self.create_timer(0.5, self.navigation_callback)
 
         # self.get_logger().info(f'self.navigation_initialized:{self.navigation_initialized}')
+
+    # 오프셋 계산 함수
+    def get_offset_pose(self, target_x, target_y, offset_dist=0.1):
+        """
+        현재 로봇 위치에서 타겟 위치를 바라보는 방향으로, 
+        타겟보다 offset_dist 만큼 덜 간 위치를 계산하여 반환
+        """
+        # 현재 로봇의 위치 가져오기 (피드백이 없으면 0,0 처리)
+        feedback = self.navigator.getFeedback()
+        if feedback:
+            robot_x = feedback.current_pose.pose.position.x
+            robot_y = feedback.current_pose.pose.position.y
+        else:
+            self.get_logger().info('로봇 위치를 못 불러옵니다.')
+
+
+        # 1. 각도(theta) 계산
+        dx = target_x - robot_x
+        dy = target_y - robot_y
+        theta = math.atan2(dy, dx)
+
+        # 2. 오프셋 좌표 계산 (타겟에서 로봇 쪽으로 offset_dist만큼 뺌)
+        safe_x = target_x - offset_dist * math.cos(theta)
+        safe_y = target_y - offset_dist * math.sin(theta)
+
+        # 3. PoseStamped 생성
+        offset_pose = self.navigator.getPoseStamped([safe_x, safe_y], TurtleBot4Directions.EAST)
+        
+        # (선택사항) 도착했을 때 RC카를 바라보도록 방향(Orientation) 설정하려면 쿼터니언 변환 필요
+        # 현재는 간단하게 EAST로 설정함
+        
+        return offset_pose
             
         # 인지값 받아오는 서브스크라이버 콜백함수
     def detect_sub_callback(self, msg):
@@ -128,17 +161,19 @@ class Move(Node):
 
         
         
-        # 4. AMR에서 객체 인식한 경우, 새로운 목표(객체 위치)로 이동
+        # 4. AMR에서 객체 인식한 경우, 새로운 목표(오프셋 적용된 객체 위치)로 이동
         if self.detected and self.goal is not None:
             self.get_logger().info(f'Target DETECTED! Moving to map coordinates: ({self.goal_x:.2f}, {self.goal_y:.2f})')
             
-            self.final_goal_pose = self.navigator.getPoseStamped(
-                [self.goal_x, self.goal_y], 
-                TurtleBot4Directions.EAST)
-        
-            # 아래 함수 사용하지 않고, 일정 거리 이내까지 직진하도록 수정 필요
-            self.navigator.startToPose(self.final_goal_pose)
-        
+            offset_goal_pose = self.get_offset_pose(self.goal_x, self.goal_y, offset_dist=0.6)
+            
+            if offset_goal_pose is not None:
+                self.get_logger().info(f'Start Chasing -> Goal: {offset_goal_pose.pose.position.x:.2f}, {offset_goal_pose.pose.position.y:.2f}')
+                
+                self.navigator.startToPose(offset_goal_pose) # 이동 시작
+                
+            else:
+                self.get_logger().warn("Could not calculate offset pose (Robot pose unknown)")
 
 
 def main():
