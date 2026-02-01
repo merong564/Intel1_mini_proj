@@ -8,6 +8,7 @@ from tf2_geometry_msgs.tf2_geometry_msgs import do_transform_point
 from geometry_msgs.msg import PointStamped, PoseStamped, Quaternion,Point
 from tf2_ros import Buffer, TransformListener
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy  # <--- [추가 1] QoS 관련 임포트
+from detect_msg.msg import Rcinfo
 
 from cv_bridge import CvBridge
 from turtlebot4_navigation.turtlebot4_navigator import TurtleBot4Navigator, TurtleBot4Directions
@@ -35,7 +36,8 @@ class DepthToMap(Node):
         self.lock = threading.Lock()
         self.processed_rgb = None  # 가공된 이미지를 저장할 변수 추가
         self.is_navigating = False  # goal을 보냈는지 확인하는 플래그
-        self.arrived = False # 로봇이 default goal에 도착했는지 확인하는 플래그
+        self.arrived = False # AMR이 default goal에 도착했는지 확인하는 플래그
+        self.detected=False  # AMR이 RC car를 인지했는지 확인하는 플래그
 
         #### QoS Add
         self.sensor_qos_profile = QoSProfile(
@@ -56,6 +58,7 @@ class DepthToMap(Node):
         self.depth_image = None
         self.rgb_image = None
         self.clicked_point = None
+        self.distance= None  # 인지되는 객체의 거리값 [m]
         self.classNames = model.names if hasattr(model, 'names') else ['Object']
 
 
@@ -83,6 +86,10 @@ class DepthToMap(Node):
         self.rgb_sub = None
         self.depth_sub = None
         self.ts = None
+
+        # RC car 정보 퍼블리시
+        self.publisher = self.create_publisher(Rcinfo, 'detected_msg', 10)
+        self.timer = self.create_timer(1.0, self.detect_publish)
 
 
         # Subscribe to camera intrinsics (needed once)
@@ -191,6 +198,20 @@ class DepthToMap(Node):
                     self.gui_thread_stop.set()
             else:
                 cv2.waitKey(10)
+    
+    # RC car 정보 퍼블리시 콜백함수
+    def detect_publish(self):
+        if self.detected and self.goal is not None:
+            detect_msg = Rcinfo()
+            # detect_msg.x = float(self.target_u)
+            # detect_msg.y = float(self.target_v)
+            detect_msg.dist = float(self.distance)
+            detect_msg.detected = bool(self.detected)
+            detect_msg.goal = self.goal
+            self.get_logger().info(f'goal point: {self.goal}')
+            
+            self.publisher.publish(detect_msg)
+            self.detected = False
 
     def process_and_publish(self):
         """ Process RGB & Depth, overlay info, transform clicked point, and publish """
@@ -257,6 +278,7 @@ class DepthToMap(Node):
                 img_to_show = cv2.resize(self.rgb_image, (704, 704))
 
                 if target_box is not None:
+                    self.detected = True    # RC car 인지 여부 True
                     x1, y1, x2, y2 = target_box
                     center_x = int(orig_cx * (704 / w))
                     center_y = int(orig_cy * (704 / h))
@@ -265,6 +287,7 @@ class DepthToMap(Node):
                     cv2.circle(img_to_show, (center_x, center_y), 5, (0, 255, 0), -1)
                 else:
                     # 인지값이 없을 경우, 모든 좌표를 -1로 출력
+                    self.detected = True    # RC car 인지 여부 False
                     self.get_logger().info(f'########## No Detect ##########')
                     # p = Point()
                     # p.x = float(-1)
@@ -275,7 +298,6 @@ class DepthToMap(Node):
                     # GUI 스레드에서 보여줄 이미지를 img_to_show(리사이즈+점)로 업데이트
                     self.processed_rgb = img_to_show.copy()
 
-                if center_y != -1 and center_x != -1:
                     # Calculate depth and transform to map frame for clicked pixel
                     #x, y = click
 
@@ -290,6 +312,7 @@ class DepthToMap(Node):
 
                         z = float(depth_display[y, x]) / 1000.0  # mm -> meters
                         # self.get_logger().info(f'First if, z: {z}')
+                        self.distance = z
 
                         if 0.2 < z < 5.0:  # Valid range filter
                             # self.get_logger().info(f'Sec if, z: {z}')
@@ -334,8 +357,7 @@ class DepthToMap(Node):
                                 qw = math.cos(yaw / 2.0)
                                 goal_pose.pose.orientation = Quaternion(x=0.0, y=0.0, z=qz, w=qw)
 
-                                self.navigator.goToPose(goal_pose)
-                                self.get_logger().info("Sent navigation goal to map coordinate.")
+                                self.goal = goal_pose
 
                                 # # 클릭 좌표 초기화
                                 # with self.lock:
