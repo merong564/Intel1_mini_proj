@@ -25,9 +25,10 @@ class YOLOWebcamPublisher(Node):
         self.max_object_count = 0
         self.classNames = model.names
         self.bridge = CvBridge()
-        self.publisher = self.create_publisher(Image, 'processed_image', 10)
+        ns = self.get_namespace()
+        self.publisher = self.create_publisher(Image, f'{ns}/processed_image', 10)
         self.should_shutdown = False
-        self.result_pub = self.create_publisher(String, 'yolo_result',10)
+        self.result_pub = self.create_publisher(String, f'{ns}/yolo_result',10)
 
         self.cap = cv2.VideoCapture("/dev/video2")
         if not self.cap.isOpened():

@@ -287,7 +287,7 @@ class DepthToMap(Node):
                     cv2.circle(img_to_show, (center_x, center_y), 5, (0, 255, 0), -1)
                 else:
                     # 인지값이 없을 경우, 모든 좌표를 -1로 출력
-                    self.detected = True    # RC car 인지 여부 False
+                    self.detected = False    # RC car 인지 여부 False
                     self.get_logger().info(f'########## No Detect ##########')
                     # p = Point()
                     # p.x = float(-1)
